@@ -50,7 +50,7 @@ class AgentHarness:
             user_text,
             mode=mode,
             history=self._history_without_current_turn(user_text),
-            tool_specs=[],
+            tool_specs=self._tool_specs_for_results(tool_results),
             memory_items=self.long_memory.recall(user_text, limit=3),
         )
         messages.append({"role": "assistant", "content": to_text(turn_result.get("reply_text", "")) or "我已经调用了工具。"})
@@ -148,3 +148,17 @@ class AgentHarness:
                 return to_text(parsed.reply_text).strip()
             return to_text(raw).strip()
         return ""
+
+    def _tool_specs_for_results(self, tool_results):
+        names = set()
+        for item in tool_results or []:
+            name = item.get("tool")
+            if name:
+                names.add(to_text(name))
+        if not names:
+            return []
+        specs = []
+        for spec in self.tool_registry.specs():
+            if to_text(spec.get("name", "")) in names:
+                specs.append(spec)
+        return specs

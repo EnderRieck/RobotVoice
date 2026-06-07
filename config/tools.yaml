@@ -62,3 +62,17 @@ dynamic_ros_tools:
         voltage: voltage
         percentage: percentage
         power_supply_status: power_supply_status
+
+  detect_face:
+    type: service
+    description: 调用 ros_face_node/face_detect 检测当前摄像头画面中的人脸。返回 result=[center_x, center_y, face_area]，face_area 为 0 表示未检测到人脸。
+    risk: low
+    service: /ros_face_node/face_detect
+    service_type: ros_face_node/FaceDetect
+    timeout_seconds: 3.0
+    parameters:
+      type: object
+      properties: {}
+    response:
+      fields:
+        result: result

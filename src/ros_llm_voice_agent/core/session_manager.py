@@ -159,9 +159,9 @@ class SessionManager:
 
     def _should_execute_tool_immediately(self, tool_name):
         tool_name = to_text(tool_name)
-        if tool_name in ("stop_all", "stop_motion", "stop_speaking", "get_bodyhub_status", "get_battery_state"):
+        if tool_name in ("stop_all", "stop_motion", "stop_speaking", "get_bodyhub_status", "get_battery_state", "detect_face"):
             return True
-        if tool_name.startswith("dynamic_get_") or tool_name == "dynamic_stop_aiui_playback":
+        if tool_name.startswith("dynamic_get_") or tool_name.startswith("dynamic_detect_") or tool_name == "dynamic_stop_aiui_playback":
             return True
         return False
 
