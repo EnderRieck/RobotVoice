@@ -1,5 +1,6 @@
 EVENT_TEXT = "text"
 EVENT_WAKEUP = "wakeup"
+EVENT_AIUI_ACTIVITY = "aiui_activity"
 EVENT_STOP_PLAY = "stop_play"
 EVENT_STOP_ALL = "stop_all"
 EVENT_TOOL_CALL = "tool_call"

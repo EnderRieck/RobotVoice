@@ -11,6 +11,7 @@ import threading
 import time
 
 from ros_llm_voice_agent.core.event_types import (
+    EVENT_AIUI_ACTIVITY,
     EVENT_STOP_ALL,
     EVENT_STOP_PLAY,
     EVENT_TEXT,
@@ -102,6 +103,8 @@ class SessionManager:
             self._handle_text(event)
         elif event.event_type == EVENT_WAKEUP:
             self._handle_wakeup(event)
+        elif event.event_type == EVENT_AIUI_ACTIVITY:
+            self._handle_aiui_activity(event)
         elif event.event_type == EVENT_STOP_PLAY:
             self.player.stop()
             if self._is_realtime_state():
@@ -230,6 +233,21 @@ class SessionManager:
                 self.player.stop()
                 self.ros.publish_tool_event({"type": "realtime_interrupt", "reason": "wakeup"})
             self._schedule_realtime_listen(delay=0.2, reason="wakeup")
+
+    def _handle_aiui_activity(self, event):
+        if not self._is_realtime_state():
+            return
+        if self.player.is_playing():
+            return
+        self._cancel_listen_watchdog()
+        timeout_sec = float(self.realtime_config.get("iat_activity_watchdog_seconds", 6.0))
+        self._listen_generation += 1
+        generation = self._listen_generation
+        timer = threading.Timer(timeout_sec, self._listen_watchdog_timeout, args=(generation, "aiui_iat_activity"))
+        timer.setDaemon(True)
+        self._listen_watchdog_timer = timer
+        timer.start()
+        self.ros.publish_tool_event({"type": "listen_watchdog_iat_activity", "seconds": timeout_sec})
 
     def _realtime_enabled(self):
         return bool(self.realtime_config.get("enabled", True))

@@ -118,7 +118,7 @@ rosservice call /llm_voice_agent/stop_all "{}"
 
 进入实时聊天后，每次回复播放结束，节点会调用 `/aiui/wakeup_mute`，让 AIUI 继续监听而不额外播放唤醒反馈。
 
-实时模式还带有 listen watchdog：如果布防后长时间没有收到 `/aiui/nlp`，例如 AIUI 出现 VAD 前端点/后端点但没有 NLP 文本，Agent 会自动再次调用 `/aiui/wakeup_mute` 重新进入监听。
+实时模式还带有 listen watchdog：如果布防后长时间没有收到 `/aiui/nlp`，例如 AIUI 出现 VAD 前端点/后端点但没有 NLP 文本，Agent 会自动再次调用 `/aiui/wakeup_mute` 重新进入监听。Agent 也会监听 `/aiui/iat`，一旦有中间识别文本就认为用户正在说话，避免 watchdog 在用户说话过程中重置 AIUI。
 
 进入实时语音也暴露为工具：`start_realtime_voice`。默认配置下，`和我聊聊天`、`陪我聊聊天`、`进入实时语音` 这类表达会先交给 LLM 判断，由 LLM 调用该工具进入连续对话模式。需要恢复旧的硬触发方式时，把 `config/agent.yaml` 里的 `chat_triggers_use_llm_tool` 改为 `false`。
 
