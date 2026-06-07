@@ -11,3 +11,7 @@ actions:
   dance:
     path: /home/lemon/robot_ros_application/catkin_ws/src/ros_actions_node/scripts/Say-yeah舞蹈案例.py
     risk: medium
+
+# YAML-defined tools for teammate ROS services/topics/listeners.
+# See README "YAML 动态工具" for examples.
+dynamic_ros_tools: {}

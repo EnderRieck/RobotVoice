@@ -1,5 +1,6 @@
 # coding: utf-8
 
+import importlib
 import os
 import subprocess
 import sys
@@ -11,6 +12,16 @@ from std_msgs.msg import Bool, Empty, Float64, Float64MultiArray, String
 from ros_llm_voice_agent.compat import to_text
 
 from .ros_publishers import AgentPublishers
+
+try:
+    basestring
+except NameError:
+    basestring = (str,)
+
+try:
+    integer_types = (int, long)
+except NameError:
+    integer_types = (int,)
 
 
 class RosAdapter:
@@ -24,6 +35,9 @@ class RosAdapter:
         self._battery_state = None
         self._walking_status = None
         self._action_process = None
+        self._dynamic_publishers = {}
+        self._dynamic_listeners = {}
+        self._dynamic_listener_values = {}
         self._lock = threading.Lock()
 
         self.gait_pub = rospy.Publisher("/gaitCommand", Float64MultiArray, queue_size=2)
@@ -160,6 +174,303 @@ class RosAdapter:
             return {"ok": True, "result": response.result}
         except Exception as exc:
             return {"ok": False, "message": to_text(exc)}
+
+    def call_dynamic_service(self, definition, args):
+        service_name = definition.get("service")
+        service_type = definition.get("service_type")
+        timeout_sec = float(definition.get("timeout_seconds", 2.0))
+        if not service_name or not service_type:
+            return {"ok": False, "message": "dynamic service tool requires service and service_type"}
+        try:
+            service_cls, request_cls = self._load_service_type(service_type)
+            request = request_cls()
+            self._apply_field_assignment(request, definition.get("request", {}), args)
+            self.rospy.wait_for_service(service_name, timeout=timeout_sec)
+            client = self.rospy.ServiceProxy(service_name, service_cls)
+            response = client(request)
+            response_data = self._select_fields(response, definition.get("response", {}))
+            response_dict = self._ros_message_to_dict(response)
+            ok = self._response_ok(response, definition)
+            message = self._response_message(response, definition, "service call finished")
+            return {
+                "ok": ok,
+                "message": message,
+                "service": service_name,
+                "service_type": service_type,
+                "response": response_data if response_data else response_dict,
+            }
+        except Exception as exc:
+            return {"ok": False, "message": to_text(exc), "service": service_name, "service_type": service_type}
+
+    def publish_dynamic_topic(self, definition, args):
+        topic = definition.get("topic")
+        message_type = definition.get("message_type") or definition.get("topic_type")
+        queue_size = int(definition.get("queue_size", 2))
+        if not topic or not message_type:
+            return {"ok": False, "message": "dynamic topic tool requires topic and message_type"}
+        try:
+            msg_cls = self._load_ros_class(message_type, "msg")
+            publisher = self._dynamic_publisher(topic, message_type, msg_cls, queue_size)
+            msg = msg_cls()
+            self._apply_field_assignment(msg, definition.get("message", {}), args)
+            publisher.publish(msg)
+            return {
+                "ok": True,
+                "message": "topic published",
+                "topic": topic,
+                "message_type": message_type,
+                "message_data": self._ros_message_to_dict(msg),
+            }
+        except Exception as exc:
+            return {"ok": False, "message": to_text(exc), "topic": topic, "message_type": message_type}
+
+    def register_dynamic_listener(self, definition):
+        topic = definition.get("topic")
+        message_type = definition.get("message_type") or definition.get("topic_type")
+        queue_size = int(definition.get("queue_size", 1))
+        key = self._dynamic_listener_key(definition)
+        if not topic or not message_type:
+            return {"ok": False, "message": "dynamic listener tool requires topic and message_type"}
+        with self._lock:
+            if key in self._dynamic_listeners:
+                return {"ok": True, "message": "listener already registered", "topic": topic}
+        try:
+            msg_cls = self._load_ros_class(message_type, "msg")
+
+            def _callback(msg, listener_key=key):
+                with self._lock:
+                    self._dynamic_listener_values[listener_key] = {"msg": msg, "time": time.time()}
+
+            subscriber = self.rospy.Subscriber(topic, msg_cls, _callback, queue_size=queue_size)
+            with self._lock:
+                self._dynamic_listeners[key] = {
+                    "subscriber": subscriber,
+                    "topic": topic,
+                    "message_type": message_type,
+                    "message_class": msg_cls,
+                }
+                self._dynamic_listener_values.setdefault(key, {"msg": None, "time": None})
+            return {"ok": True, "message": "listener registered", "topic": topic, "message_type": message_type}
+        except Exception as exc:
+            return {"ok": False, "message": to_text(exc), "topic": topic, "message_type": message_type}
+
+    def read_dynamic_listener(self, definition, args):
+        key = self._dynamic_listener_key(definition)
+        result = self.register_dynamic_listener(definition)
+        if not result.get("ok"):
+            return result
+
+        timeout_sec = float(args.get("timeout_sec", definition.get("timeout_seconds", 2.0)))
+        wait_for_message = bool(definition.get("wait_for_message", True))
+        max_age = definition.get("max_age_seconds")
+
+        value = self._dynamic_listener_value(key)
+        if value.get("msg") is None and wait_for_message:
+            wait_result = self._wait_for_dynamic_message(definition, timeout_sec, key)
+            if not wait_result.get("ok"):
+                return wait_result
+            value = wait_result
+
+        msg = value.get("msg")
+        stamp = value.get("time")
+        if msg is None:
+            return {"ok": False, "message": "listener has not received a message", "topic": definition.get("topic")}
+
+        if max_age is not None and stamp is not None and time.time() - stamp > float(max_age):
+            if wait_for_message:
+                wait_result = self._wait_for_dynamic_message(definition, timeout_sec, key)
+                if not wait_result.get("ok"):
+                    return wait_result
+                value = wait_result
+                msg = value.get("msg")
+                stamp = value.get("time")
+            if msg is None or (stamp is not None and time.time() - stamp > float(max_age)):
+                return {"ok": False, "message": "listener message is stale", "topic": definition.get("topic")}
+
+        result_data = self._select_fields(msg, definition.get("result", {}))
+        return {
+            "ok": True,
+            "message": "listener data returned",
+            "topic": definition.get("topic"),
+            "message_type": definition.get("message_type") or definition.get("topic_type"),
+            "age_seconds": time.time() - stamp if stamp is not None else None,
+            "data": result_data if result_data else self._ros_message_to_dict(msg),
+        }
+
+    def _dynamic_publisher(self, topic, message_type, msg_cls, queue_size):
+        key = "{}|{}".format(topic, message_type)
+        with self._lock:
+            publisher = self._dynamic_publishers.get(key)
+            if publisher is None:
+                publisher = self.rospy.Publisher(topic, msg_cls, queue_size=queue_size)
+                self._dynamic_publishers[key] = publisher
+            return publisher
+
+    def _dynamic_listener_key(self, definition):
+        message_type = definition.get("message_type") or definition.get("topic_type") or ""
+        return to_text(definition.get("name") or "{}|{}".format(definition.get("topic", ""), message_type))
+
+    def _dynamic_listener_value(self, key):
+        with self._lock:
+            value = self._dynamic_listener_values.get(key) or {}
+            return {"msg": value.get("msg"), "time": value.get("time")}
+
+    def _wait_for_dynamic_message(self, definition, timeout_sec, key):
+        topic = definition.get("topic")
+        message_type = definition.get("message_type") or definition.get("topic_type")
+        try:
+            msg_cls = self._load_ros_class(message_type, "msg")
+            msg = self.rospy.wait_for_message(topic, msg_cls, timeout=timeout_sec)
+            value = {"ok": True, "msg": msg, "time": time.time()}
+            with self._lock:
+                self._dynamic_listener_values[key] = {"msg": value.get("msg"), "time": value.get("time")}
+            return value
+        except Exception as exc:
+            return {"ok": False, "message": to_text(exc), "topic": topic, "message_type": message_type}
+
+    def _load_ros_class(self, type_name, namespace):
+        type_name = to_text(type_name)
+        if "/" not in type_name:
+            raise ValueError("ROS type must use package/Type format: {}".format(type_name))
+        package, class_name = type_name.split("/", 1)
+        module = importlib.import_module("{}.{}".format(package, namespace))
+        return getattr(module, class_name)
+
+    def _load_service_type(self, type_name):
+        type_name = to_text(type_name)
+        if "/" not in type_name:
+            raise ValueError("ROS service type must use package/Type format: {}".format(type_name))
+        package, class_name = type_name.split("/", 1)
+        module = importlib.import_module("{}.srv".format(package))
+        return getattr(module, class_name), getattr(module, "{}Request".format(class_name))
+
+    def _apply_field_assignment(self, target, assignment, args):
+        args = args or {}
+        assignment = assignment or {}
+        if not assignment:
+            self._apply_default_assignment(target, args)
+            return
+
+        fields = assignment.get("fields") if isinstance(assignment, dict) else {}
+        constants = assignment.get("constants") if isinstance(assignment, dict) else {}
+        if fields or constants:
+            for field_path, arg_name in (fields or {}).items():
+                self._set_field(target, field_path, args.get(arg_name))
+            for field_path, value in (constants or {}).items():
+                self._set_field(target, field_path, value)
+            return
+
+        for field_path, spec in assignment.items():
+            if isinstance(spec, dict):
+                if "from_arg" in spec:
+                    value = args.get(spec.get("from_arg"), spec.get("default"))
+                elif "value" in spec:
+                    value = spec.get("value")
+                else:
+                    continue
+            elif isinstance(spec, basestring) and spec in args:
+                value = args.get(spec)
+            else:
+                value = spec
+            self._set_field(target, field_path, value)
+
+    def _apply_default_assignment(self, target, args):
+        slots = list(getattr(target, "__slots__", []) or [])
+        for field_path, value in args.items():
+            if self._has_field_path(target, field_path):
+                self._set_field(target, field_path, value)
+        if len(args) == 1 and len(slots) == 1:
+            self._set_field(target, slots[0], list(args.values())[0])
+
+    def _has_field_path(self, target, field_path):
+        current = target
+        for part in to_text(field_path).split("."):
+            if not hasattr(current, part):
+                return False
+            current = getattr(current, part)
+        return True
+
+    def _set_field(self, target, field_path, value):
+        parts = to_text(field_path).split(".")
+        current = target
+        for part in parts[:-1]:
+            current = getattr(current, part)
+        field = parts[-1]
+        current_value = getattr(current, field)
+        setattr(current, field, self._coerce_value(current_value, value))
+
+    def _get_field(self, target, field_path):
+        current = target
+        for part in to_text(field_path).split("."):
+            if not hasattr(current, part):
+                return None
+            current = getattr(current, part)
+        return current
+
+    def _coerce_value(self, current_value, value):
+        if value is None:
+            return value
+        if isinstance(current_value, bool):
+            if isinstance(value, basestring):
+                return to_text(value).strip().lower() in ("1", "true", "yes", "y", "on", "是")
+            return bool(value)
+        if isinstance(current_value, integer_types) and not isinstance(current_value, bool):
+            return int(value)
+        if isinstance(current_value, float):
+            return float(value)
+        if isinstance(current_value, basestring):
+            text = to_text(value)
+            if sys.version_info[0] < 3:
+                return text.encode("utf-8")
+            return text
+        return value
+
+    def _response_ok(self, response, definition):
+        success_field = definition.get("success_field", "success")
+        if not success_field:
+            return True
+        value = self._get_field(response, success_field)
+        if value is None:
+            return True
+        return bool(value)
+
+    def _response_message(self, response, definition, default):
+        message_field = definition.get("message_field", "message")
+        value = self._get_field(response, message_field) if message_field else None
+        if value is None:
+            return default
+        return to_text(value)
+
+    def _select_fields(self, msg, selection):
+        if not selection:
+            return {}
+        fields = selection.get("fields", selection) if isinstance(selection, dict) else {}
+        if not isinstance(fields, dict):
+            return {}
+        data = {}
+        for output_name, field_path in fields.items():
+            data[output_name] = self._message_value_to_data(self._get_field(msg, field_path))
+        return data
+
+    def _ros_message_to_dict(self, value):
+        return self._message_value_to_data(value)
+
+    def _message_value_to_data(self, value):
+        if hasattr(value, "__slots__"):
+            data = {}
+            for slot in getattr(value, "__slots__", []):
+                data[slot] = self._message_value_to_data(getattr(value, slot))
+            return data
+        if isinstance(value, (list, tuple)):
+            return [self._message_value_to_data(item) for item in value]
+        if isinstance(value, bytes):
+            try:
+                return value.decode("utf-8")
+            except Exception:
+                return repr(value)
+        if isinstance(value, basestring):
+            return to_text(value)
+        return value
 
     def _ensure_leju_paths(self, env=None):
         try:

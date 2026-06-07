@@ -1,4 +1,5 @@
 from .action_tools import PlayActionTool
+from .dynamic_ros_tools import build_dynamic_ros_tools
 from .memory_tools import RecallMemoryTool, RememberFactTool
 from .motion_tools import StopMotionTool, TurnTool, WalkBackwardTool, WalkForwardTool
 from .registry import ToolContext, ToolRegistry, ToolWorker
@@ -22,5 +23,7 @@ def build_tool_registry(ros_adapter, safety_gate, memory_store, player, tools_co
     registry.register(DetectFaceTool())
     registry.register(RememberFactTool())
     registry.register(RecallMemoryTool())
+    for tool in build_dynamic_ros_tools(tools_config, ros_adapter):
+        registry.register(tool)
     worker = ToolWorker(registry, ros_adapter)
     return registry, worker

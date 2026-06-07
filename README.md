@@ -179,6 +179,123 @@ rosservice call /llm_voice_agent/stop_all "{}"
 
 大模型只应该看到工具名、描述和 JSON 参数。具体 ROS 细节应留在 Tool 或 `RosAdapter` 内部。
 
+## YAML 动态工具
+
+如果别人已经写好了 ROS 包，并且它暴露了 service、topic 或可订阅的状态 topic，可以直接在 `config/tools.yaml` 的 `dynamic_ros_tools` 里注册成工具，不一定要再写 Python Tool 类。
+
+支持三种类型：
+
+```text
+service   调用 ROS service
+topic     发布一条 ROS message
+listener  订阅 ROS topic，并在工具调用时返回最近一次消息
+```
+
+### 注册 Service
+
+示例：把别人的 `/demo/set_light` service 注册成 `set_light` 工具。
+
+```yaml
+dynamic_ros_tools:
+  set_light:
+    type: service
+    description: 设置机器人灯光颜色。
+    risk: low
+    service: /demo/set_light
+    service_type: teammate_pkg/SetLight
+    timeout_seconds: 2.0
+    parameters:
+      type: object
+      properties:
+        color:
+          type: string
+          description: 灯光颜色
+          enum: [red, green, blue]
+      required: [color]
+    request:
+      fields:
+        color: color
+      constants:
+        enable: true
+    response:
+      fields:
+        success: success
+        detail: message
+```
+
+含义：
+
+- `parameters` 是给大模型看的 JSON schema。
+- `request.fields` 表示把工具参数映射到 service request 字段。
+- `request.constants` 表示固定写入 request 的常量字段。
+- `response.fields` 表示从 service response 中抽取哪些字段返回给 Agent。
+
+### 注册 Topic 发布
+
+示例：把 `/demo/expression` 注册成一个发布表情的工具。
+
+```yaml
+dynamic_ros_tools:
+  set_expression:
+    type: topic
+    description: 设置机器人脸部表情。
+    risk: low
+    topic: /demo/expression
+    message_type: std_msgs/String
+    queue_size: 2
+    parameters:
+      type: object
+      properties:
+        expression:
+          type: string
+          description: 表情名称
+          enum: [happy, sad, neutral]
+      required: [expression]
+    message:
+      fields:
+        data: expression
+```
+
+如果 message 只有一个字段，例如 `std_msgs/String.data`，也可以省略 `message`，工具调用只有一个参数时会自动写入这个字段。
+
+### 注册 Listener
+
+示例：把别人视觉包发布的 `/demo/object_name` 注册成一个查询工具。
+
+```yaml
+dynamic_ros_tools:
+  get_seen_object:
+    type: listener
+    description: 获取视觉模块最近识别到的物体名称。
+    risk: low
+    topic: /demo/object_name
+    message_type: std_msgs/String
+    timeout_seconds: 2.0
+    wait_for_message: true
+    max_age_seconds: 5.0
+    parameters:
+      type: object
+      properties: {}
+    result:
+      fields:
+        object_name: data
+```
+
+`listener` 会在 Agent 启动时订阅 topic。工具被调用时会返回最近一次消息；如果还没收到消息，并且 `wait_for_message: true`，会等待最多 `timeout_seconds`。
+
+### 字段路径
+
+字段映射支持点号路径，例如：
+
+```yaml
+request:
+  fields:
+    target.pose.position.x: x
+    target.pose.position.y: y
+```
+
+这适合封装嵌套 ROS message。前提是目标 message/request 本身已经有对应字段。
+
 ## 迁移到新机器人
 
 把本包放入目标机器人 catkin workspace：
