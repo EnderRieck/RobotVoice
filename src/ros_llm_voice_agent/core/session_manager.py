@@ -130,24 +130,40 @@ class SessionManager:
         self.ros.publish_state(self.state.state)
 
         result = self.harness.run_turn(self.session_id, self.state.state, text)
+        tool_results = []
         for call in result.get("tool_calls", []) or []:
             name = call.get("tool") or call.get("name") or call.get("tool_name")
             args = call.get("args") or call.get("arguments") or {}
-            immediate = name in ("stop_all", "stop_motion", "stop_speaking", "get_bodyhub_status", "get_battery_state")
+            immediate = self._should_execute_tool_immediately(name)
             queue_result = self.tool_worker.submit(name, args, immediate=immediate)
+            if immediate:
+                tool_results.append({"tool": name, "args": args, "result": queue_result})
             self.ros.publish_tool_event({"type": "agent_tool_submit", "tool": name, "args": args, "result": queue_result})
         self.ros.publish_tool_event({"type": "agent_turn", "result": result})
-        self._speak(result.get("reply_text", ""))
+        reply_text = result.get("reply_text", "")
+        if tool_results:
+            summarized = self.harness.summarize_tool_results(text, self.state.state, result, tool_results)
+            if summarized:
+                reply_text = summarized
+        self._speak(reply_text)
 
     def _handle_realtime_tool_call(self, event):
         tool_name = event.payload.get("tool_name")
         args = event.payload.get("arguments") or {}
-        immediate = tool_name in ("stop_all", "stop_motion", "stop_speaking", "get_bodyhub_status", "get_battery_state")
+        immediate = self._should_execute_tool_immediately(tool_name)
         if immediate:
             result = self.tool_worker.submit(tool_name, args, immediate=True)
         else:
             result = self.tool_worker.submit(tool_name, args, immediate=False)
         self.ros.publish_tool_event({"type": "realtime_tool_call", "tool": tool_name, "args": args, "result": result})
+
+    def _should_execute_tool_immediately(self, tool_name):
+        tool_name = to_text(tool_name)
+        if tool_name in ("stop_all", "stop_motion", "stop_speaking", "get_bodyhub_status", "get_battery_state"):
+            return True
+        if tool_name.startswith("dynamic_get_") or tool_name == "dynamic_stop_aiui_playback":
+            return True
+        return False
 
     def _speak(self, text):
         text = to_text(text).strip()

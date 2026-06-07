@@ -2,6 +2,8 @@
 
 from __future__ import unicode_literals
 
+import json
+
 from ros_llm_voice_agent.compat import to_text
 from ros_llm_voice_agent.llm.base import AgentResponse
 from ros_llm_voice_agent.llm.tool_call_parser import parse_agent_response
@@ -40,6 +42,35 @@ class AgentHarness:
             "tool_name": tool_name,
             "result": result,
         }
+
+    def summarize_tool_results(self, user_text, mode, turn_result, tool_results):
+        if not tool_results:
+            return ""
+        messages = self.prompt_builder.build_messages(
+            user_text,
+            mode=mode,
+            history=self._history_without_current_turn(user_text),
+            tool_specs=[],
+            memory_items=self.long_memory.recall(user_text, limit=3),
+        )
+        messages.append({"role": "assistant", "content": to_text(turn_result.get("reply_text", "")) or "我已经调用了工具。"})
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    "工具执行结果如下：\n{}\n\n"
+                    "请只根据这些工具结果，用简短自然的中文回答用户。"
+                    "不要编造没有出现在工具结果里的数值；不要再次调用工具；不要输出JSON。"
+                    "只报告结果，不要自行诊断、警告或给建议；"
+                    "如果传感器字段是0、unknown或缺失，只说这是当前返回值，不要推断故障。"
+                ).format(json.dumps(tool_results, ensure_ascii=False, indent=2)),
+            }
+        )
+        raw = self.chat_client.generate(messages, tools=None)
+        summary = self._response_text(raw)
+        if summary:
+            self.short_memory.replace_last_assistant(summary)
+        return summary
 
     def _generate_response(self, user_text, mode):
         messages = self.prompt_builder.build_messages(
@@ -94,3 +125,26 @@ class AgentHarness:
             reply = "我收到了：{}".format(text)
 
         return AgentResponse(reply_text=reply, tool_calls=calls)
+
+    def _history_without_current_turn(self, user_text):
+        history = self.short_memory.messages()
+        if len(history) >= 2:
+            last_user = history[-2]
+            last_assistant = history[-1]
+            if (
+                last_user.get("role") == "user"
+                and last_assistant.get("role") == "assistant"
+                and to_text(last_user.get("content", "")) == to_text(user_text)
+            ):
+                return history[:-2]
+        return history
+
+    def _response_text(self, raw):
+        if isinstance(raw, AgentResponse):
+            return to_text(raw.reply_text).strip()
+        if raw:
+            parsed = parse_agent_response(raw)
+            if parsed.reply_text:
+                return to_text(parsed.reply_text).strip()
+            return to_text(raw).strip()
+        return ""

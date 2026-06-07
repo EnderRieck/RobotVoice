@@ -18,3 +18,11 @@ class ShortTermMemory:
 
     def messages(self):
         return list(self._messages)
+
+    def replace_last_assistant(self, assistant_text):
+        assistant_text = to_text(assistant_text)
+        for index in range(len(self._messages) - 1, -1, -1):
+            if self._messages[index].get("role") == "assistant":
+                self._messages[index]["content"] = assistant_text
+                return True
+        return False
