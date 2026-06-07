@@ -55,6 +55,9 @@ realtime:
   ignore_while_speaking: true
   self_speech_grace_seconds: 0.2
   interrupt_on_wakeup: true
+  listen_watchdog_enabled: true
+  listen_watchdog_seconds: 8.0
+  empty_text_rearm_delay_seconds: 0.2
   enter_ack: 好的，我进入实时对话，你可以直接说下一句。
   exit_ack: 好的，我退出实时对话。
 

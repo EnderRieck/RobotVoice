@@ -41,6 +41,8 @@ class SessionManager:
         self.events = queue.Queue()
         self._running = False
         self._listen_arm_pending = False
+        self._listen_watchdog_timer = None
+        self._listen_generation = 0
         self._last_input_text = ""
         self._last_input_time = 0.0
 
@@ -72,6 +74,7 @@ class SessionManager:
 
     def stop(self):
         self._running = False
+        self._cancel_listen_watchdog()
 
     def on_play_end(self):
         self.ros.publish_play_end()
@@ -96,7 +99,11 @@ class SessionManager:
     def _handle_text(self, event):
         text = to_text(event.payload.get("text", "")).strip()
         if not text:
+            if self._is_realtime_state():
+                delay = float(self.realtime_config.get("empty_text_rearm_delay_seconds", 0.2))
+                self._schedule_realtime_listen(delay=delay, reason="empty_text")
             return
+        self._cancel_listen_watchdog()
 
         mode = event.payload.get("mode", "non_realtime")
         self.ros.publish_transcript(text)
@@ -105,6 +112,7 @@ class SessionManager:
             self.state.set_idle()
             self.ros.publish_state(self.state.state)
             self.player.stop()
+            self._cancel_listen_watchdog()
             self._speak(self.realtime_config.get("exit_ack", "好的，我退出聊天模式。"))
             return
 
@@ -259,3 +267,40 @@ class SessionManager:
         result["type"] = "realtime_listen_arm"
         result["reason"] = reason
         self.ros.publish_tool_event(result)
+        if result.get("ok"):
+            self._schedule_listen_watchdog(reason)
+
+    def _schedule_listen_watchdog(self, reason):
+        if not bool(self.realtime_config.get("listen_watchdog_enabled", True)):
+            return
+        self._cancel_listen_watchdog()
+        self._listen_generation += 1
+        generation = self._listen_generation
+        timeout_sec = float(self.realtime_config.get("listen_watchdog_seconds", 8.0))
+        timer = threading.Timer(timeout_sec, self._listen_watchdog_timeout, args=(generation, reason))
+        timer.setDaemon(True)
+        self._listen_watchdog_timer = timer
+        timer.start()
+        self.ros.publish_tool_event({"type": "listen_watchdog_start", "seconds": timeout_sec, "reason": reason})
+
+    def _cancel_listen_watchdog(self):
+        self._listen_generation += 1
+        timer = self._listen_watchdog_timer
+        self._listen_watchdog_timer = None
+        if timer is not None:
+            try:
+                timer.cancel()
+            except Exception:
+                pass
+
+    def _listen_watchdog_timeout(self, generation, reason):
+        if generation != self._listen_generation:
+            return
+        self._listen_watchdog_timer = None
+        if not self._is_realtime_state() or not self._running:
+            return
+        if self.player.is_playing():
+            self._schedule_listen_watchdog("speaking")
+            return
+        self.ros.publish_tool_event({"type": "listen_watchdog_timeout", "reason": reason})
+        self._schedule_realtime_listen(delay=0.0, reason="listen_watchdog")

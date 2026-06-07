@@ -118,6 +118,8 @@ rosservice call /llm_voice_agent/stop_all "{}"
 
 进入实时聊天后，每次回复播放结束，节点会调用 `/aiui/wakeup_mute`，让 AIUI 继续监听而不额外播放唤醒反馈。
 
+实时模式还带有 listen watchdog：如果布防后长时间没有收到 `/aiui/nlp`，例如 AIUI 出现 VAD 前端点/后端点但没有 NLP 文本，Agent 会自动再次调用 `/aiui/wakeup_mute` 重新进入监听。
+
 说下面任意退出词可回到普通待机模式：
 
 ```text
