@@ -58,6 +58,21 @@ class SessionManager:
     def enqueue_tool_call(self, tool_name, arguments=None, source="realtime"):
         self.events.put(AgentEvent(EVENT_TOOL_CALL, source, {"tool_name": tool_name, "arguments": arguments or {}}))
 
+    def start_realtime_from_tool(self):
+        if not self._realtime_enabled():
+            return {"ok": False, "message": "realtime voice is disabled"}
+        self._cancel_listen_watchdog()
+        self.state.set_realtime()
+        self.ros.publish_state(self.state.state, {"mode": "realtime", "source": "tool"})
+        return {"ok": True, "message": "已进入实时语音模式"}
+
+    def stop_realtime_from_tool(self):
+        self._cancel_listen_watchdog()
+        self.state.set_idle()
+        self.player.stop()
+        self.ros.publish_state(self.state.state, {"source": "tool"})
+        return {"ok": True, "message": "已退出实时语音模式"}
+
     def run_forever(self, rospy):
         self._running = True
         self.ros.publish_state(self.state.state)
@@ -116,7 +131,7 @@ class SessionManager:
             self._speak(self.realtime_config.get("exit_ack", "好的，我退出聊天模式。"))
             return
 
-        if self.trigger_router.is_chat_trigger(text):
+        if self.trigger_router.is_chat_trigger(text) and not bool(self.session_config.get("chat_triggers_use_llm_tool", True)):
             if self._realtime_enabled():
                 self.state.set_realtime()
                 self.ros.publish_state(self.state.state, {"mode": "realtime"})
@@ -167,7 +182,16 @@ class SessionManager:
 
     def _should_execute_tool_immediately(self, tool_name):
         tool_name = to_text(tool_name)
-        if tool_name in ("stop_all", "stop_motion", "stop_speaking", "get_bodyhub_status", "get_battery_state", "detect_face"):
+        if tool_name in (
+            "stop_all",
+            "stop_motion",
+            "stop_speaking",
+            "get_bodyhub_status",
+            "get_battery_state",
+            "detect_face",
+            "start_realtime_voice",
+            "stop_realtime_voice",
+        ):
             return True
         if tool_name.startswith("dynamic_get_") or tool_name.startswith("dynamic_detect_") or tool_name == "dynamic_stop_aiui_playback":
             return True

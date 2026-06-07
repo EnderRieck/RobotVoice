@@ -43,6 +43,7 @@ session:
     - 不聊了
     - 停止聊天
   max_history_turns: 8
+  chat_triggers_use_llm_tool: true
 
 realtime:
   enabled: true

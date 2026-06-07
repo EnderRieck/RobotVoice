@@ -49,6 +49,7 @@ def build_runtime():
     trigger_router = TriggerRouter(agent_config.get("session", {}))
     tts = build_tts(agent_config)
     manager = SessionManager(agent_config, trigger_router, harness, tts, player, ros_adapter, tool_worker)
+    tool_registry.ctx.session = manager
     player.set_on_play_end(manager.on_play_end)
     return manager, agent_config
 

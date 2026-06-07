@@ -4,7 +4,7 @@ from .memory_tools import RecallMemoryTool, RememberFactTool
 from .motion_tools import StopMotionTool, TurnTool, WalkBackwardTool, WalkForwardTool
 from .registry import ToolContext, ToolRegistry, ToolWorker
 from .robot_status_tools import GetBatteryStateTool, GetBodyhubStatusTool
-from .speech_tools import StopAllTool, StopSpeakingTool
+from .speech_tools import StartRealtimeVoiceTool, StopAllTool, StopRealtimeVoiceTool, StopSpeakingTool
 from .vision_tools import DetectFaceTool
 
 
@@ -13,6 +13,8 @@ def build_tool_registry(ros_adapter, safety_gate, memory_store, player, tools_co
     registry = ToolRegistry(ctx)
     registry.register(StopSpeakingTool())
     registry.register(StopAllTool())
+    registry.register(StartRealtimeVoiceTool())
+    registry.register(StopRealtimeVoiceTool())
     registry.register(StopMotionTool())
     registry.register(GetBodyhubStatusTool())
     registry.register(GetBatteryStateTool())

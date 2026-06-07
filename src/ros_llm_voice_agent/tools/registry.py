@@ -18,6 +18,7 @@ class ToolContext:
         self.safety = safety
         self.memory = memory
         self.player = player
+        self.session = None
 
 
 class ToolRegistry:
