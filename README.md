@@ -191,6 +191,14 @@ topic     发布一条 ROS message
 listener  订阅 ROS topic，并在工具调用时返回最近一次消息
 ```
 
+当前 `config/tools.yaml` 已经放了三个安全示例：
+
+```text
+dynamic_get_bodyhub_status   调用 /MediumSize/BodyHub/GetStatus
+dynamic_get_battery_state    监听 /MediumSize/SensorHub/BatteryState
+dynamic_stop_aiui_playback   发布 /aiui/stop_play
+```
+
 ### 注册 Service
 
 示例：把别人的 `/demo/set_light` service 注册成 `set_light` 工具。

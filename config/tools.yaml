@@ -14,4 +14,51 @@ actions:
 
 # YAML-defined tools for teammate ROS services/topics/listeners.
 # See README "YAML 动态工具" for examples.
-dynamic_ros_tools: {}
+dynamic_ros_tools:
+  dynamic_get_bodyhub_status:
+    type: service
+    description: 通过 BodyHub service 查询机器人当前状态和动作队列长度。
+    risk: low
+    service: /MediumSize/BodyHub/GetStatus
+    service_type: bodyhub/SrvString
+    timeout_seconds: 2.0
+    parameters:
+      type: object
+      properties: {}
+    request:
+      constants:
+        str: get
+    response:
+      fields:
+        status: data
+        pose_queue_size: poseQueueSize
+        joint_queue_size: jointQueueSize
+
+  dynamic_stop_aiui_playback:
+    type: topic
+    description: 向 AIUI 停止播放 topic 发布空消息，停止当前语音播放。
+    risk: low
+    topic: /aiui/stop_play
+    message_type: std_msgs/Empty
+    queue_size: 2
+    parameters:
+      type: object
+      properties: {}
+
+  dynamic_get_battery_state:
+    type: listener
+    description: 读取 SensorHub 最近一次发布的电池状态。
+    risk: low
+    topic: /MediumSize/SensorHub/BatteryState
+    message_type: sensor_msgs/BatteryState
+    timeout_seconds: 2.0
+    wait_for_message: true
+    max_age_seconds: 10.0
+    parameters:
+      type: object
+      properties: {}
+    result:
+      fields:
+        voltage: voltage
+        percentage: percentage
+        power_supply_status: power_supply_status
