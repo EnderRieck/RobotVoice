@@ -1,0 +1,30 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ROS / catkin build outputs
+build/
+devel/
+install/
+.catkin_tools/
+
+# Runtime logs and generated audio
+*.log
+*.wav
+*.mp3
+*.pcm
+*.ogg
+
+# Local secrets / environment overrides
+env.sh
+.env
+.env.*
+*.key
+*.pem
+
+# Editor / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

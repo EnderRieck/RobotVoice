@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>ros_llm_voice_agent</name>
+  <version>0.0.1</version>
+  <description>LLM voice agent harness for Roban ROS application</description>
+
+  <maintainer email="lemon@todo.todo">lemon</maintainer>
+  <license>TODO</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>ros_AIUI_node</exec_depend>
+  <exec_depend>ros_mic_arrays</exec_depend>
+  <exec_depend>ros_vision_node</exec_depend>
+  <exec_depend>bodyhub</exec_depend>
+  <exec_depend>leju_lib_pkg</exec_depend>
+
+  <export>
+  </export>
+</package>

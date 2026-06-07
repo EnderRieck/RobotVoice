@@ -1,0 +1,9 @@
+motion:
+  max_forward_m: 0.3
+  max_backward_m: 0.3
+  max_turn_deg: 30
+
+tool_policy:
+  low_risk_immediate: true
+  motion_requires_queue: true
+  stop_tools_bypass_queue: true

@@ -1,0 +1,13 @@
+actions:
+  wave:
+    path: /home/lemon/robot_ros_application/catkin_ws/src/ros_actions_node/scripts/举手.py
+    risk: low
+  nod:
+    path: /home/lemon/robot_ros_application/catkin_ws/src/ros_actions_node/scripts/点头.py
+    risk: low
+  shake_head:
+    path: /home/lemon/robot_ros_application/catkin_ws/src/ros_actions_node/scripts/摇头.py
+    risk: low
+  dance:
+    path: /home/lemon/robot_ros_application/catkin_ws/src/ros_actions_node/scripts/Say-yeah舞蹈案例.py
+    risk: medium

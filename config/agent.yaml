@@ -1,0 +1,71 @@
+llm:
+  provider: generic
+  api_key_env: LLM_API_KEY
+  base_url_env: LLM_BASE_URL
+  model_env: LLM_MODEL
+  timeout_seconds: 30
+  send_tools_native: true
+  tool_choice: auto
+
+tts:
+  provider: stepfun
+  api_key_env: STEPFUN_TTS_API_KEY
+  endpoint_env: STEPFUN_TTS_URL
+  model_env: STEPFUN_TTS_MODEL
+  voice_env: STEPFUN_TTS_VOICE
+  output_dir: /tmp/llm_voice_agent/tts
+  audio_format: mp3
+  speed: 1.0
+  volume: 1.0
+  sample_rate: 24000
+  markdown_filter: true
+  timeout_seconds: 30
+
+session:
+  default_session_id: main
+  chat_triggers:
+    - 和我聊聊天
+    - 陪我聊聊天
+    - 开始聊天
+    - 聊天模式
+    - 实时语音
+    - 开始实时语音
+    - 进入实时语音
+    - 实时对话
+    - 开始实时对话
+    - 进入实时对话
+  exit_triggers:
+    - 退出聊天
+    - 退出实时语音
+    - 停止实时语音
+    - 退出实时对话
+    - 停止实时对话
+    - 不聊了
+    - 停止聊天
+  max_history_turns: 8
+
+realtime:
+  enabled: true
+  auto_listen_after_reply: true
+  wakeup_mute_service: /aiui/wakeup_mute
+  need_to_play_wakeup_reply: false
+  listen_after_reply_delay_seconds: 0.5
+  wakeup_mute_timeout_seconds: 2.0
+  duplicate_text_window_seconds: 1.5
+  ignore_while_speaking: true
+  self_speech_grace_seconds: 0.2
+  interrupt_on_wakeup: true
+  enter_ack: 好的，我进入实时对话，你可以直接说下一句。
+  exit_ack: 好的，我退出实时对话。
+
+topics:
+  aiui_nlp: /aiui/nlp
+  wakeup: /micarrays/wakeup
+  aiui_stop_play: /aiui/stop_play
+  aiui_wakeup_mute: /aiui/wakeup_mute
+  realtime_final_text: /llm_voice_agent/realtime/final_text
+  state: /llm_voice_agent/state
+  transcript: /llm_voice_agent/transcript
+  reply_text: /llm_voice_agent/reply_text
+  tool_events: /llm_voice_agent/tool_events
+  play_end: /llm_voice_agent/play_end
