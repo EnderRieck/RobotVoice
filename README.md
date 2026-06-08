@@ -29,27 +29,40 @@ nano ~/.config/ros_llm_voice_agent/env.sh
 chmod 600 ~/.config/ros_llm_voice_agent/env.sh
 ```
 
-`env.sh` 示例：
+`env.sh` 只放 **API key 和 URL**；模型、音色等其余配置都在 yaml 里（见下面「配置职责划分」）。示例：
 
 ```bash
-export LLM_BASE_URL="https://api.stepfun.ai/v1/chat/completions"
-export LLM_MODEL="step-3.7-flash"
+# 大模型 chat completions
+export LLM_BASE_URL="https://api.stepfun.com/v1/chat/completions"
 export LLM_API_KEY="your-stepfun-api-key"
 
-export STEPFUN_TTS_URL="https://api.stepfun.ai/v1/audio/speech"
+# 非实时 TTS
+export STEPFUN_TTS_URL="https://api.stepfun.com/v1/audio/speech"
 export STEPFUN_TTS_API_KEY="your-stepfun-api-key"
-export STEPFUN_TTS_MODEL="step-tts-2"
-export STEPFUN_TTS_VOICE="wenrounansheng"
 
-# 可选：真正的阶跃实时语音 WebSocket 后端
+# 阶跃实时语音 WebSocket 后端
 export STEPFUN_REALTIME_API_KEY="$LLM_API_KEY"
 export STEPFUN_REALTIME_URL="wss://api.stepfun.com/v1/realtime"
-export STEPFUN_REALTIME_MODEL="step-audio-2-mini"
-export STEPFUN_REALTIME_VOICE="wenrounansheng"
 ```
 
-如果没有单独设置 `STEPFUN_TTS_API_KEY`，程序会回退使用 `LLM_API_KEY`。
-如果没有单独设置 `STEPFUN_REALTIME_API_KEY`，实时语音节点也会回退使用 `LLM_API_KEY`。
+如果没有单独设置 `STEPFUN_TTS_API_KEY` / `STEPFUN_REALTIME_API_KEY`，会回退使用 `LLM_API_KEY`。
+
+> `*_MODEL`、`*_VOICE` 这类环境变量仍然**优先生效**（env 覆盖 yaml），但默认不再写在 `env.sh` 里，改到 yaml 配置；只在需要临时覆盖时才在 env 设置。
+
+## 配置职责划分
+
+配置分两层：`env.sh` 只管「密钥和端点」，yaml 管「行为和参数」。解析顺序是 **环境变量 → yaml → 代码默认**，即 env 可临时覆盖 yaml。
+
+| 文件 | 负责 |
+|---|---|
+| `~/.config/ros_llm_voice_agent/env.sh` | **仅** API key（`*_API_KEY`）和 URL（`LLM_BASE_URL`、`STEPFUN_TTS_URL`、`STEPFUN_REALTIME_URL`）。不提交 Git。 |
+| `config/agent.yaml` | 非实时主链路：LLM（`llm.model`）、TTS（`tts.model`、`tts.voice`）、会话触发词、topic/service 名等。 |
+| `config/stepfun_realtime.yaml` | 阶跃实时语音后端：`model`、`voice`、`modalities`、`turn_detection`(VAD)、`audio`(采样率/设备/增益)、工具开关等。 |
+| `config/tools.yaml` | 工具白名单：`actions`(play_action 子动作) 和 `dynamic_ros_tools`(声明式 service/topic/listener 工具)。 |
+| `config/prompts.yaml` | 系统提示词。 |
+| `config/safety.yaml` | 运动安全限制(前进/后退/转向上限)。 |
+
+当前默认：LLM `step-3.7-flash`；非实时 TTS `step-tts-2` + `qingchunshaonv`(女声)；实时 `step-1o-audio` + `linjiajiejie`(女声)。
 
 `config/agent.yaml` 默认开启 OpenAI-compatible 原生工具调用：
 
@@ -220,12 +233,15 @@ arecord
 aplay
 ```
 
-如果播放设备不是 `default`，修改 `config/stepfun_realtime.yaml` 里的：
+实时语音播放设备和音量在 `config/stepfun_realtime.yaml`：
 
 ```yaml
 audio:
-  output_device: hw:2,0
+  output_device: plughw:0,0   # 机器人模拟扬声器(card0)，plughw 自动重采样
+  output_gain: 3.0            # 阶跃返回 PCM 振幅偏低，软件增益放大；破音就调小
 ```
+
+> 用 `aplay -l` 确认声卡编号。当前机器人只有 card0，**不要写不存在的 `hw:2,0`**（会导致 aplay broken pipe：有 speaking 状态却没声音）。
 
 手动测试：
 
@@ -234,6 +250,21 @@ rostopic echo /llm_voice_agent/stepfun_realtime/state
 rosservice call /llm_voice_agent/stepfun_realtime/start "{}"
 rosservice call /llm_voice_agent/stepfun_realtime/stop "{}"
 ```
+
+### 实时语音排错（踩过的坑）
+
+接通阶跃实时语音时踩过的坑，按现象排查：
+
+- **连得上但完全没声音 / `response.done status=incomplete`**：先查工具 schema 格式。阶跃实时要 **chat-completions 嵌套格式** `{type: function, function: {name, ...}}`，平铺写法 `{type: function, name: ...}` 会回 `400 input_invalid`。
+- **麦克风模式一直发数据但没回复**：
+  - `turn_detection` 必须带 `create_response: true`，否则服务端 VAD 检测到说话也不自动生成回复。
+  - `energy_awakeness_threshold` 默认 **2500 偏高**，机器人麦克风经 16k→24k 重采样后能量偏低常常过不了线。节点已上报 `rms`（`/llm_voice_agent/tool_events` 的 `stepfun_realtime_audio_stream` 事件里）；说话时 `rms` 要明显大于阈值，否则调低（机器人上用 1200）。
+  - 本机 PC 测试时默认输入设备可能是 VoiceMeeter 等虚拟声卡（静音，`rms=0`），要用 `--input-device` 指定真实麦克风。
+- **state 走到 speaking 却没声音 / `play_error: Broken pipe`**：播放设备不存在或打不开。`aplay -l` 查声卡，用 `plughw:0,0`，别用不存在的 `hw:2,0`。
+- **有声音但比非实时小很多**：阶跃返回 PCM 振幅偏低，调大 `audio.output_gain`。
+- **模型只复述用户的话、不回答**：`step-audio-2-mini` 对音频输入复述倾向很强，需很强系统提示才压得住；换旗舰 `step-1o-audio` 即正常对话。另外 `step-audio-2-mini` 还要求 instructions 末尾追加「请使用默认男声/女声与用户交流」，旗舰模型不需要。
+- **改了节点/yaml 不生效**：节点在进程启动时读一次 yaml，改完要**重启节点进程**（不是 stop/start 服务）。
+- **本机脱离 ROS 排查**：`pixi run realtime-mic-commit --raw --input-device <N>` 录 5 秒手动提交，`--raw` 打印服务端原始事件，最适合定位「持续输入不输出」。`pixi run audio-devices` 列设备号。
 
 ## 给队友调用
 
@@ -287,14 +318,13 @@ topic     发布一条 ROS message
 listener  订阅 ROS topic，并在工具调用时返回最近一次消息
 ```
 
-当前 `config/tools.yaml` 已经放了三个安全示例：
+当前 `config/tools.yaml` 的 `dynamic_ros_tools` 只保留一个示例：
 
 ```text
-dynamic_get_bodyhub_status   调用 /MediumSize/BodyHub/GetStatus
-dynamic_get_battery_state    监听 /MediumSize/SensorHub/BatteryState
-dynamic_stop_aiui_playback   发布 /aiui/stop_play
-detect_face                  调用 /ros_face_node/face_detect
+dynamic_stop_aiui_playback   发布 /aiui/stop_play（topic 类型）
 ```
+
+> 机器人状态、电池、人脸检测已由内置工具（`get_bodyhub_status` / `get_battery_state` / `detect_face`）提供，不再用动态工具重复注册。下面的 service / topic / listener 写法仍可作为接入队友 ROS 包的模板。
 
 ### 注册 Service
 
