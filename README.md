@@ -86,7 +86,13 @@ source ~/.config/ros_llm_voice_agent/env.sh
 roslaunch ros_llm_voice_agent agent_non_realtime.launch
 ```
 
-启动阶跃实时语音后端（含连续实时对话）：
+启动带实时聊天触发的 Agent：
+
+```bash
+roslaunch ros_llm_voice_agent agent_realtime.launch
+```
+
+启动阶跃实时语音后端：
 
 ```bash
 roslaunch ros_llm_voice_agent agent_stepfun_realtime.launch
@@ -125,7 +131,10 @@ rosservice call /llm_voice_agent/stop_all "{}"
 
 ## 实时聊天
 
-实时聊天由 `agent_stepfun_realtime.launch` 提供：AIUI 只负责触发入口，进入后由 `stepfun_realtime_voice_node.py` 直接采集麦克风 PCM 音频，通过 WebSocket 发给阶跃 `step-1o-audio` 端到端语音模型，语音直接进直接出、可打断。
+当前有两种实时模式：
+
+- `agent_realtime.launch`：旧的 AIUI 连续监听模式，AIUI 负责唤醒、VAD 和 ASR，Agent 负责大模型和 TTS。
+- `agent_stepfun_realtime.launch`：新的阶跃实时语音后端，AIUI 只负责触发入口，进入后由 `stepfun_realtime_voice_node.py` 直接采集麦克风 PCM 音频并通过 WebSocket 发给阶跃。
 
 唤醒机器人后，说下面任意触发词可进入实时聊天模式：
 
@@ -161,7 +170,7 @@ rosservice call /llm_voice_agent/stop_all "{}"
 启动方式：
 
 ```bash
-roslaunch ros_llm_voice_agent agent_stepfun_realtime.launch enable_realtime_text_topic:=true
+roslaunch ros_llm_voice_agent agent_realtime.launch enable_realtime_text_topic:=true
 rostopic pub -1 /llm_voice_agent/realtime/final_text std_msgs/String "data: '往前走一点'"
 ```
 
