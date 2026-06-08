@@ -67,6 +67,7 @@ class StepFunRealtimeVoiceNode:
         self._resample_state = None
         self._audio_bytes_sent = 0
         self._last_audio_progress_time = 0.0
+        self._last_rms = 0
 
     def start_services(self):
         start_service = self.ros_config.get("start_service", "/llm_voice_agent/stepfun_realtime/start")
@@ -239,6 +240,13 @@ class StepFunRealtimeVoiceNode:
             return
         if event_type == "response.done":
             response = event.get("response") or {}
+            self._publish_event(
+                {
+                    "type": "stepfun_realtime_response_done",
+                    "status": response.get("status"),
+                    "status_details": response.get("status_details"),
+                }
+            )
             for item in response.get("output") or []:
                 if to_text(item.get("type", "")) == "function_call":
                     self._handle_function_call_event(item)
@@ -396,6 +404,10 @@ class StepFunRealtimeVoiceNode:
         try:
             data = bytes(bytearray(msg.data))
             data = self._resample_input_if_needed(data)
+            try:
+                self._last_rms = audioop.rms(data, 2) if data else 0
+            except Exception:
+                self._last_rms = 0
             self._send_json({"type": "input_audio_buffer.append", "audio": self._base64_audio(data)})
             self._publish_audio_progress("topic", len(data))
         except Exception as exc:
@@ -429,6 +441,7 @@ class StepFunRealtimeVoiceNode:
                 "source": source,
                 "chunk_bytes": int(chunk_bytes or 0),
                 "bytes_total": self._audio_bytes_sent,
+                "rms": int(self._last_rms or 0),
             }
         )
 
@@ -437,6 +450,12 @@ class StepFunRealtimeVoiceNode:
             return
         try:
             data = base64.b64decode(to_text(encoded))
+            gain = float(self.audio_config.get("output_gain", 1.0) or 1.0)
+            if gain != 1.0:
+                try:
+                    data = audioop.mul(data, 2, gain)  # clips to int16 range
+                except Exception:
+                    pass
             proc = self._ensure_playback()
             if proc and proc.stdin:
                 proc.stdin.write(data)

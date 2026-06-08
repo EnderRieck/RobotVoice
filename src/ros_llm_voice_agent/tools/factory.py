@@ -1,7 +1,7 @@
 from .action_tools import PlayActionTool
 from .dynamic_ros_tools import build_dynamic_ros_tools
 from .memory_tools import RecallMemoryTool, RememberFactTool
-from .motion_tools import StopMotionTool, TurnTool, WalkBackwardTool, WalkForwardTool
+from .motion_tools import SetHeadTool, StopMotionTool, TurnTool, WalkBackwardTool, WalkForwardTool
 from .registry import ToolContext, ToolRegistry, ToolWorker
 from .robot_status_tools import GetBatteryStateTool, GetBodyhubStatusTool
 from .speech_tools import StartRealtimeVoiceTool, StopAllTool, StopRealtimeVoiceTool, StopSpeakingTool
@@ -21,6 +21,7 @@ def build_tool_registry(ros_adapter, safety_gate, memory_store, player, tools_co
     registry.register(WalkForwardTool())
     registry.register(WalkBackwardTool())
     registry.register(TurnTool())
+    registry.register(SetHeadTool())
     registry.register(PlayActionTool((tools_config or {}).get("actions", {})))
     registry.register(DetectFaceTool())
     registry.register(RememberFactTool())

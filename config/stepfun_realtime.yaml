@@ -24,6 +24,9 @@ stepfun_realtime:
     涉及运动控制时保持保守，不要连续执行危险动作。
   turn_detection:
     type: server_vad
+    prefix_padding_ms: 500
+    silence_duration_ms: 600
+    energy_awakeness_threshold: 1200
     create_response: true
 
 audio:
@@ -36,7 +39,8 @@ audio:
   channels: 1
   chunk_ms: 100
   input_device: default
-  output_device: hw:2,0
+  output_device: plughw:0,0
+  output_gain: 3.0
   start_capture_delay_seconds: 0.8
   progress_event_interval_seconds: 5.0
   arecord_command: arecord
