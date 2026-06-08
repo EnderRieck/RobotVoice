@@ -11,7 +11,7 @@ from ros_llm_voice_agent.core.event_types import (
 
 
 class RosSubscribers:
-    def __init__(self, rospy, topics, session_manager, enable_realtime_stub=False, enable_realtime_text_topic=False):
+    def __init__(self, rospy, topics, session_manager, enable_realtime_text_topic=False):
         self._rospy = rospy
         self._topics = topics
         self._session_manager = session_manager
@@ -20,7 +20,7 @@ class RosSubscribers:
             rospy.Subscriber(topics["aiui_iat"], String, self._aiui_iat_cb, queue_size=10)
         rospy.Subscriber(topics["wakeup"], String, self._wakeup_cb, queue_size=10)
         rospy.Subscriber(topics["aiui_stop_play"], Empty, self._stop_play_cb, queue_size=10)
-        if enable_realtime_stub or enable_realtime_text_topic:
+        if enable_realtime_text_topic:
             rospy.Subscriber(topics["realtime_final_text"], String, self._realtime_final_text_cb, queue_size=10)
 
     def _aiui_nlp_cb(self, msg):

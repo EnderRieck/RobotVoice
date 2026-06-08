@@ -27,7 +27,6 @@ catkin_package(
 
 catkin_install_python(PROGRAMS
   scripts/llm_voice_agent_node.py
-  scripts/realtime_text_stub_node.py
   scripts/stepfun_realtime_voice_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

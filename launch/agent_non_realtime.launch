@@ -4,6 +4,5 @@
     <param name="tools_config" value="$(find ros_llm_voice_agent)/config/tools.yaml" />
     <param name="safety_config" value="$(find ros_llm_voice_agent)/config/safety.yaml" />
     <param name="prompts_config" value="$(find ros_llm_voice_agent)/config/prompts.yaml" />
-    <param name="enable_realtime_stub" value="false" />
   </node>
 </launch>

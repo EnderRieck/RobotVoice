@@ -75,9 +75,7 @@ def main():
     rospy.init_node("llm_voice_agent", anonymous=False)
     manager, agent_config = build_runtime()
 
-    enable_realtime_text_topic = bool(
-        rospy.get_param("~enable_realtime_text_topic", rospy.get_param("~enable_realtime_stub", False))
-    )
+    enable_realtime_text_topic = bool(rospy.get_param("~enable_realtime_text_topic", False))
     RosSubscribers(rospy, agent_config.get("topics", {}), manager, enable_realtime_text_topic=enable_realtime_text_topic)
 
     rospy.Service("/llm_voice_agent/start_chat", Empty, lambda req: _start_chat(manager))
