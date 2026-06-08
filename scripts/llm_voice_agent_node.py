@@ -3,12 +3,14 @@
 
 from __future__ import unicode_literals
 
+import json
 import os
 import sys
 
 import rospy
 from std_srvs.srv import Empty, EmptyResponse
 
+from ros_llm_voice_agent.compat import to_ros_string, to_text
 from ros_llm_voice_agent.core.agent_harness import AgentHarness
 from ros_llm_voice_agent.core.event_types import EVENT_STOP_ALL, SOURCE_SERVICE
 from ros_llm_voice_agent.core.session_manager import SessionManager
@@ -25,6 +27,7 @@ from ros_llm_voice_agent.voice.audio_player import AudioPlayer
 from ros_llm_voice_agent.voice.stepfun_tts import StepFunTTS
 from ros_llm_voice_agent.voice.trigger_router import TriggerRouter
 from ros_llm_voice_agent.voice.volcengine_tts import VolcengineTTS
+from ros_llm_voice_agent.srv import ExecuteTool, ExecuteToolResponse, GetToolSpecs, GetToolSpecsResponse
 
 
 def _param_path(name, default_name):
@@ -33,6 +36,9 @@ def _param_path(name, default_name):
 
 def build_runtime():
     agent_config = load_yaml(_param_path("~agent_config", "agent.yaml"))
+    realtime_backend = rospy.get_param("~realtime_backend", "")
+    if realtime_backend:
+        agent_config.setdefault("realtime", {})["backend"] = realtime_backend
     tools_config = load_yaml(_param_path("~tools_config", "tools.yaml"))
     safety_config = load_yaml(_param_path("~safety_config", "safety.yaml"))
     prompts_config = load_yaml(_param_path("~prompts_config", "prompts.yaml"))
@@ -79,6 +85,8 @@ def main():
     rospy.Service("/llm_voice_agent/start_realtime", Empty, lambda req: _start_realtime(manager))
     rospy.Service("/llm_voice_agent/stop_realtime", Empty, lambda req: _stop_realtime(manager))
     rospy.Service("/llm_voice_agent/stop_all", Empty, lambda req: _stop_all(manager))
+    rospy.Service("/llm_voice_agent/tool_specs", GetToolSpecs, lambda req: _tool_specs(manager))
+    rospy.Service("/llm_voice_agent/execute_tool", ExecuteTool, lambda req: _execute_tool(manager, req))
 
     rospy.on_shutdown(manager.stop)
     manager.run_forever(rospy)
@@ -107,6 +115,26 @@ def _stop_realtime(manager):
 def _stop_all(manager):
     manager.enqueue_simple(EVENT_STOP_ALL, source=SOURCE_SERVICE)
     return EmptyResponse()
+
+
+def _tool_specs(manager):
+    try:
+        payload = json.dumps(manager.tool_specs(), ensure_ascii=False)
+        return GetToolSpecsResponse(True, to_ros_string(payload), "")
+    except Exception as exc:
+        return GetToolSpecsResponse(False, "[]", to_ros_string(to_text(exc)))
+
+
+def _execute_tool(manager, req):
+    try:
+        args_text = to_text(req.arguments_json).strip()
+        args = json.loads(args_text) if args_text else {}
+        result = manager.execute_tool_sync(req.tool_name, args, source="execute_tool_service")
+        payload = json.dumps(result, ensure_ascii=False)
+        return ExecuteToolResponse(bool(result.get("ok")), to_ros_string(payload), to_ros_string(result.get("message", "")))
+    except Exception as exc:
+        payload = json.dumps({"ok": False, "message": to_text(exc)}, ensure_ascii=False)
+        return ExecuteToolResponse(False, to_ros_string(payload), to_ros_string(to_text(exc)))
 
 
 if __name__ == "__main__":

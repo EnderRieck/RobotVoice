@@ -8,6 +8,8 @@ import threading
 import time
 
 from std_msgs.msg import Bool, Empty, Float64, Float64MultiArray, String
+from std_srvs.srv import Empty as EmptyService
+from std_srvs.srv import Trigger
 
 from ros_llm_voice_agent.compat import to_text
 
@@ -81,6 +83,24 @@ class RosAdapter:
             client = self.rospy.ServiceProxy(service_name, SrvWakeupMute)
             client(bool(need_to_play_reply))
             return {"ok": True, "service": service_name, "need_to_play_reply": bool(need_to_play_reply)}
+        except Exception as exc:
+            return {"ok": False, "service": service_name, "message": to_text(exc)}
+
+    def call_empty_service(self, service_name, timeout_sec=2.0):
+        try:
+            self.rospy.wait_for_service(service_name, timeout=timeout_sec)
+            client = self.rospy.ServiceProxy(service_name, EmptyService)
+            client()
+            return {"ok": True, "service": service_name}
+        except Exception as exc:
+            return {"ok": False, "service": service_name, "message": to_text(exc)}
+
+    def call_trigger_service(self, service_name, timeout_sec=2.0):
+        try:
+            self.rospy.wait_for_service(service_name, timeout=timeout_sec)
+            client = self.rospy.ServiceProxy(service_name, Trigger)
+            response = client()
+            return {"ok": bool(response.success), "service": service_name, "message": to_text(response.message)}
         except Exception as exc:
             return {"ok": False, "service": service_name, "message": to_text(exc)}
 

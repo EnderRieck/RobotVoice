@@ -40,9 +40,16 @@ export STEPFUN_TTS_URL="https://api.stepfun.ai/v1/audio/speech"
 export STEPFUN_TTS_API_KEY="your-stepfun-api-key"
 export STEPFUN_TTS_MODEL="step-tts-2"
 export STEPFUN_TTS_VOICE="wenrounansheng"
+
+# 可选：真正的阶跃实时语音 WebSocket 后端
+export STEPFUN_REALTIME_API_KEY="$LLM_API_KEY"
+export STEPFUN_REALTIME_URL="wss://api.stepfun.com/v1/realtime"
+export STEPFUN_REALTIME_MODEL="step-audio-2-mini"
+export STEPFUN_REALTIME_VOICE="wenrounansheng"
 ```
 
 如果没有单独设置 `STEPFUN_TTS_API_KEY`，程序会回退使用 `LLM_API_KEY`。
+如果没有单独设置 `STEPFUN_REALTIME_API_KEY`，实时语音节点也会回退使用 `LLM_API_KEY`。
 
 `config/agent.yaml` 默认开启 OpenAI-compatible 原生工具调用：
 
@@ -70,6 +77,12 @@ roslaunch ros_llm_voice_agent agent_non_realtime.launch
 
 ```bash
 roslaunch ros_llm_voice_agent agent_realtime.launch
+```
+
+启动阶跃实时语音后端：
+
+```bash
+roslaunch ros_llm_voice_agent agent_stepfun_realtime.launch
 ```
 
 ## 测试方式
@@ -104,6 +117,11 @@ rosservice call /llm_voice_agent/stop_all "{}"
 ```
 
 ## 实时聊天
+
+当前有两种实时模式：
+
+- `agent_realtime.launch`：旧的 AIUI 连续监听模式，AIUI 负责唤醒、VAD 和 ASR，Agent 负责大模型和 TTS。
+- `agent_stepfun_realtime.launch`：新的阶跃实时语音后端，AIUI 只负责触发入口，进入后由 `stepfun_realtime_voice_node.py` 直接采集麦克风 PCM 音频并通过 WebSocket 发给阶跃。
 
 唤醒机器人后，说下面任意触发词可进入实时聊天模式：
 
@@ -141,6 +159,80 @@ rosservice call /llm_voice_agent/stop_all "{}"
 ```bash
 roslaunch ros_llm_voice_agent agent_realtime.launch enable_realtime_text_topic:=true
 rostopic pub -1 /llm_voice_agent/realtime/final_text std_msgs/String "data: '往前走一点'"
+```
+
+### 阶跃实时语音后端
+
+新的实时节点提供：
+
+```text
+/llm_voice_agent/stepfun_realtime/start
+/llm_voice_agent/stepfun_realtime/stop
+/llm_voice_agent/stepfun_realtime/state
+```
+
+主 Agent 会额外提供给实时节点使用的工具服务：
+
+```text
+/llm_voice_agent/tool_specs
+/llm_voice_agent/execute_tool
+```
+
+实时节点启动后会从 `/llm_voice_agent/tool_specs` 拉取当前工具 schema，传给阶跃实时模型。阶跃返回 function call 时，节点会调用 `/llm_voice_agent/execute_tool`，由现有 Agent Harness 执行工具并把结果回传给实时模型。
+
+机器人上如果缺少 WebSocket 依赖，先安装：
+
+```bash
+python -m pip install --user "websocket-client==0.59.0"
+```
+
+本地 PC 可以先脱离 ROS 测试阶跃实时语音链路：
+
+```powershell
+pixi install
+$env:STEPFUN_REALTIME_API_KEY="your-stepfun-api-key"
+pixi run realtime-text
+pixi run realtime-mic
+pixi run realtime-mic-commit
+```
+
+`realtime-mic` 使用服务端 VAD 自动判断说话结束；`realtime-mic-commit` 会录音 5 秒后手动提交音频，适合排查“持续输入但不输出”的问题。
+
+实时语音默认直接订阅机器人已有的麦克风阵列音频流：
+
+```text
+/audio/stream
+```
+
+这个 topic 是 `std_msgs/UInt8MultiArray`，当前机器人上约为 16 kHz、16-bit、mono PCM。实时节点会重采样到 24 kHz 后发给阶跃实时语音接口。
+
+如果要改回 ALSA 直接采集，修改 `config/stepfun_realtime.yaml`：
+
+```yaml
+audio:
+  input_source: alsa
+```
+
+ALSA 采集和播放使用系统命令：
+
+```text
+arecord
+aplay
+```
+
+如果播放设备不是 `default`，修改 `config/stepfun_realtime.yaml` 里的：
+
+```yaml
+audio:
+  output_device: hw:2,0
+```
+
+手动测试：
+
+```bash
+rostopic echo /llm_voice_agent/stepfun_realtime/state
+rosservice call /llm_voice_agent/stepfun_realtime/start "{}"
+rosservice call /llm_voice_agent/stepfun_realtime/stop "{}"
 ```
 
 ## 给队友调用

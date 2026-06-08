@@ -1,0 +1,54 @@
+stepfun_realtime:
+  endpoint_env: STEPFUN_REALTIME_URL
+  endpoint: wss://api.stepfun.com/v1/realtime
+  api_key_env: STEPFUN_REALTIME_API_KEY
+  model_env: STEPFUN_REALTIME_MODEL
+  model: step-1o-audio
+  voice_env: STEPFUN_REALTIME_VOICE
+  voice: linjiajiejie
+  modalities:
+    - audio
+    - text
+  input_audio_format: pcm16
+  output_audio_format: pcm16
+  tool_choice: auto
+  enable_tools: true
+  exclude_tools:
+    - start_realtime_voice
+  create_response_after_tool: true
+  connect_timeout_seconds: 5.0
+  extra_headers: []
+  instructions: |
+    你是机器人鲁班的实时语音助手。请用简短自然的中文回答。
+    当用户要求查询机器人状态、控制运动、执行动作、记忆信息或退出实时语音时，优先调用可用工具。
+    涉及运动控制时保持保守，不要连续执行危险动作。
+  turn_detection:
+    type: server_vad
+    create_response: true
+
+audio:
+  input_source: topic
+  input_topic: /audio/stream
+  sample_rate: 24000
+  input_sample_rate: 24000
+  topic_sample_rate: 16000
+  output_sample_rate: 24000
+  channels: 1
+  chunk_ms: 100
+  input_device: default
+  output_device: hw:2,0
+  start_capture_delay_seconds: 0.8
+  progress_event_interval_seconds: 5.0
+  arecord_command: arecord
+  aplay_command: aplay
+
+ros:
+  start_service: /llm_voice_agent/stepfun_realtime/start
+  stop_service: /llm_voice_agent/stepfun_realtime/stop
+  tool_specs_service: /llm_voice_agent/tool_specs
+  execute_tool_service: /llm_voice_agent/execute_tool
+  service_timeout_seconds: 5.0
+  state_topic: /llm_voice_agent/stepfun_realtime/state
+  transcript_topic: /llm_voice_agent/transcript
+  reply_text_topic: /llm_voice_agent/reply_text
+  event_topic: /llm_voice_agent/tool_events

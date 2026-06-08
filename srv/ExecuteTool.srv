@@ -1,0 +1,6 @@
+string tool_name
+string arguments_json
+---
+bool ok
+string result_json
+string message

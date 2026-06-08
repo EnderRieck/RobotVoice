@@ -1,0 +1,20 @@
+[workspace]
+channels = ["conda-forge"]
+name = "ros-llm-voice-agent"
+platforms = ["win-64"]
+version = "0.1.0"
+
+[dependencies]
+python = "3.11.*"
+pip = "*"
+
+[pypi-dependencies]
+sounddevice = "*"
+websocket-client = "*"
+
+[tasks]
+check-local-realtime = "python -m py_compile local_tests/stepfun_realtime_local_test.py"
+realtime-text = "python local_tests/stepfun_realtime_local_test.py --mode text"
+realtime-mic = "python local_tests/stepfun_realtime_local_test.py --mode mic"
+realtime-mic-commit = "python local_tests/stepfun_realtime_local_test.py --mode mic --mic-submit commit --turn-detection none --record-seconds 5"
+audio-devices = "python local_tests/stepfun_realtime_local_test.py --list-devices"

@@ -18,7 +18,7 @@ class GenericChatClient(BaseChatClient):
         llm_cfg = config.get("llm", {})
         self.api_key = os.environ.get(llm_cfg.get("api_key_env", "LLM_API_KEY"), "")
         self.base_url = os.environ.get(llm_cfg.get("base_url_env", "LLM_BASE_URL"), "")
-        self.model = os.environ.get(llm_cfg.get("model_env", "LLM_MODEL"), "")
+        self.model = os.environ.get(llm_cfg.get("model_env", "LLM_MODEL"), "") or llm_cfg.get("model", "")
         self.timeout = float(llm_cfg.get("timeout_seconds", 30))
         self.send_tools_native = bool(llm_cfg.get("send_tools_native", False))
         self.tool_choice = llm_cfg.get("tool_choice", "auto")

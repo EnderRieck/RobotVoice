@@ -3,6 +3,7 @@ llm:
   api_key_env: LLM_API_KEY
   base_url_env: LLM_BASE_URL
   model_env: LLM_MODEL
+  model: step-3.7-flash
   timeout_seconds: 30
   send_tools_native: true
   tool_choice: auto
@@ -12,7 +13,9 @@ tts:
   api_key_env: STEPFUN_TTS_API_KEY
   endpoint_env: STEPFUN_TTS_URL
   model_env: STEPFUN_TTS_MODEL
+  model: step-tts-2
   voice_env: STEPFUN_TTS_VOICE
+  voice: qingchunshaonv
   output_dir: /tmp/llm_voice_agent/tts
   audio_format: mp3
   speed: 1.0
@@ -47,6 +50,10 @@ session:
 
 realtime:
   enabled: true
+  backend: aiui
+  backend_start_service: /llm_voice_agent/stepfun_realtime/start
+  backend_stop_service: /llm_voice_agent/stepfun_realtime/stop
+  backend_service_timeout_seconds: 3.0
   auto_listen_after_reply: true
   wakeup_mute_service: /aiui/wakeup_mute
   need_to_play_wakeup_reply: false

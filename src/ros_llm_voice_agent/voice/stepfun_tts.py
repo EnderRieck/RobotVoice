@@ -24,8 +24,8 @@ class StepFunTTS(BaseTTS):
             tts_cfg.get("endpoint_env", "STEPFUN_TTS_URL"),
             "https://api.stepfun.ai/v1/audio/speech",
         )
-        self.model = env_value(tts_cfg.get("model_env", "STEPFUN_TTS_MODEL"), "step-tts-2")
-        self.voice = env_value(tts_cfg.get("voice_env", "STEPFUN_TTS_VOICE"), "lively-girl")
+        self.model = env_value(tts_cfg.get("model_env", "STEPFUN_TTS_MODEL")) or tts_cfg.get("model") or "step-tts-2"
+        self.voice = env_value(tts_cfg.get("voice_env", "STEPFUN_TTS_VOICE")) or tts_cfg.get("voice") or "lively-girl"
         self.output_dir = tts_cfg.get("output_dir", "/tmp/llm_voice_agent/tts")
         self.audio_format = tts_cfg.get("audio_format", "mp3")
         self.speed = tts_cfg.get("speed", None)

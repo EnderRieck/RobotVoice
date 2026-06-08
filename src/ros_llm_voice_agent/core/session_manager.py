@@ -64,15 +64,41 @@ class SessionManager:
             return {"ok": False, "message": "realtime voice is disabled"}
         self._cancel_listen_watchdog()
         self.state.set_realtime()
-        self.ros.publish_state(self.state.state, {"mode": "realtime", "source": "tool"})
-        return {"ok": True, "message": "已进入实时语音模式"}
+        backend_result = self._start_realtime_backend()
+        self.ros.publish_state(
+            self.state.state,
+            {"mode": "realtime", "source": "tool", "backend": self._realtime_backend(), "backend_result": backend_result},
+        )
+        if backend_result.get("ok"):
+            return {"ok": True, "message": "已进入实时语音模式", "backend": backend_result}
+        return {
+            "ok": False,
+            "message": "实时语音后端启动失败：{}".format(backend_result.get("message", "unknown")),
+            "backend": backend_result,
+        }
 
     def stop_realtime_from_tool(self):
         self._cancel_listen_watchdog()
+        backend_result = self._stop_realtime_backend()
         self.state.set_idle()
         self.player.stop()
-        self.ros.publish_state(self.state.state, {"source": "tool"})
-        return {"ok": True, "message": "已退出实时语音模式"}
+        self.ros.publish_state(self.state.state, {"source": "tool", "backend": self._realtime_backend(), "backend_result": backend_result})
+        if backend_result.get("ok"):
+            return {"ok": True, "message": "已退出实时语音模式", "backend": backend_result}
+        return {
+            "ok": False,
+            "message": "实时语音后端停止失败：{}".format(backend_result.get("message", "unknown")),
+            "backend": backend_result,
+        }
+
+    def tool_specs(self):
+        return self.harness.tool_registry.specs()
+
+    def execute_tool_sync(self, tool_name, arguments=None, source="service"):
+        arguments = arguments or {}
+        result = self.tool_worker.registry.execute(tool_name, arguments)
+        self.ros.publish_tool_event({"type": "execute_tool_service", "tool": tool_name, "args": arguments, "result": result, "source": source})
+        return result
 
     def run_forever(self, rospy):
         self._running = True
@@ -125,6 +151,10 @@ class SessionManager:
 
         mode = event.payload.get("mode", "non_realtime")
         self.ros.publish_transcript(text)
+
+        if self._is_realtime_state() and self._realtime_backend() == "stepfun" and event.source == SOURCE_AIUI:
+            self.ros.publish_tool_event({"type": "drop_text", "reason": "stepfun_realtime_backend_active", "text": text})
+            return
 
         if self.trigger_router.is_exit_trigger(text):
             self.state.set_idle()
@@ -237,6 +267,8 @@ class SessionManager:
     def _handle_aiui_activity(self, event):
         if not self._is_realtime_state():
             return
+        if self._realtime_backend() != "aiui":
+            return
         if self.player.is_playing():
             return
         self._cancel_listen_watchdog()
@@ -251,6 +283,9 @@ class SessionManager:
 
     def _realtime_enabled(self):
         return bool(self.realtime_config.get("enabled", True))
+
+    def _realtime_backend(self):
+        return to_text(self.realtime_config.get("backend", "aiui")).strip().lower() or "aiui"
 
     def _is_realtime_state(self):
         return self.state.state == STATE_REALTIME and self._realtime_enabled()
@@ -289,6 +324,8 @@ class SessionManager:
         return False
 
     def _schedule_realtime_listen(self, delay=0.5, reason="unknown"):
+        if self._realtime_backend() != "aiui":
+            return
         if not bool(self.realtime_config.get("auto_listen_after_reply", True)):
             return
         if self._listen_arm_pending:
@@ -346,3 +383,19 @@ class SessionManager:
             return
         self.ros.publish_tool_event({"type": "listen_watchdog_timeout", "reason": reason})
         self._schedule_realtime_listen(delay=0.0, reason="listen_watchdog")
+
+    def _start_realtime_backend(self):
+        if self._realtime_backend() != "stepfun":
+            return {"ok": True, "backend": self._realtime_backend(), "message": "using aiui realtime backend"}
+        return self.ros.call_trigger_service(
+            self.realtime_config.get("backend_start_service", "/llm_voice_agent/stepfun_realtime/start"),
+            timeout_sec=float(self.realtime_config.get("backend_service_timeout_seconds", 3.0)),
+        )
+
+    def _stop_realtime_backend(self):
+        if self._realtime_backend() != "stepfun":
+            return {"ok": True, "backend": self._realtime_backend(), "message": "using aiui realtime backend"}
+        return self.ros.call_trigger_service(
+            self.realtime_config.get("backend_stop_service", "/llm_voice_agent/stepfun_realtime/stop"),
+            timeout_sec=float(self.realtime_config.get("backend_service_timeout_seconds", 3.0)),
+        )
